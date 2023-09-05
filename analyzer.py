@@ -3,6 +3,7 @@ import pandas as pd
 import sys
 import datetime
 import os
+from openpyxl.styles import Alignment, Border, Side
 
 def fetch_data(start_date):
     db_config = {
@@ -85,20 +86,78 @@ def generate_summary(results):
         elif row['column'] == 'username_count':
             summary[key]['magnitude'] += 2
 
-    # Convert the summary dictionary to a list of dictionaries for easier CSV writing
+    # Convert the summary dictionary to a list of dictionaries for easier writing
     summary_list = [{'domain_name': key[0], 'offense_id': key[1], 'evolution': len(val['evolution']), 'magnitude': val['magnitude']} for key, val in summary.items()]
     return sorted(summary_list, key=lambda x: x['domain_name'])
 
+
+def auto_adjust_columns_width(sheet):
+    for column in sheet.columns:
+        max_length = 0
+        column = [cell for cell in column]
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(cell.value)
+            except:
+                pass
+        adjusted_width = (max_length + 2)
+        sheet.column_dimensions[column[0].column_letter].width = adjusted_width
 
 def write_to_excel(results, summary, filename):
     # Convert results and summary to DataFrames
     results_df = pd.DataFrame(results)
     summary_df = pd.DataFrame(summary)
+    
+    # Rename columns for the Data sheet
+    results_df.rename(columns={
+        'offense_id': 'Ofensa',
+        'domain_name': 'Cliente',
+        'column': 'Atributo',
+        'initial_value': 'Valor Inicial',
+        'changed_value': 'Delta',
+        'query_time': 'Muestra'
+    }, inplace=True)
 
-    # Write to Excel with two sheets
+    # Rename columns for the Resumen sheet
+    summary_df.rename(columns={
+        'domain_name': 'Cliente',
+        'offense_id': 'Ofensa',
+        'evolution': 'Evolución',
+        'magnitude': 'Magnitud'
+    }, inplace=True)
+
     with pd.ExcelWriter(f'Reporte Mutaciones {filename}.xlsx', engine='openpyxl') as writer:
         results_df.to_excel(writer, sheet_name='Data', index=False)
+        
+        # Filter and sort the summary dataframe before writing it to Excel
+        summary_df = summary_df[summary_df['Evolución'] != 1]  # Filter out rows where 'Evolución' is 1
+        summary_df.sort_values(by='Magnitud', ascending=False, inplace=True)  # Sort by 'Magnitud'
+        
         summary_df.to_excel(writer, sheet_name='Resumen', index=False)
+
+        # Get the `openpyxl` workbook and sheets objects
+        workbook  = writer.book
+        results_sheet = workbook['Data']
+        summary_sheet = workbook['Resumen']
+
+        # Define border style
+        border = Border(left=Side(style='thin'), 
+                        right=Side(style='thin'), 
+                        top=Side(style='thin'), 
+                        bottom=Side(style='thin'))
+
+        # Apply styles and filters
+        for sheet in [results_sheet, summary_sheet]:
+            # Enable filters for all columns
+            last_col_letter = sheet.cell(row=1, column=sheet.max_column).column_letter
+            sheet.auto_filter.ref = f"A1:{last_col_letter}1"
+            
+            for row in sheet.iter_rows():
+                for cell in row:
+                    cell.border = border
+                    cell.alignment = Alignment(horizontal='left')
+            auto_adjust_columns_width(sheet)
 
 def main():
     if len(sys.argv) != 2:
