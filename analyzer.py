@@ -1,13 +1,14 @@
 import mysql.connector
-import csv
+import pandas as pd
 import sys
 import datetime
+import os
 
 def fetch_data(start_date):
     db_config = {
         'host': 'localhost',
         'user': 'root',
-        'password': input("Enter MySQL password: "),
+        'password': os.environ.get('DB_PASSWORD'),
         'database': 'desviaciones'
     }
 
@@ -89,11 +90,15 @@ def generate_summary(results):
     return sorted(summary_list, key=lambda x: x['domain_name'])
 
 
-def write_to_csv(data, filename, fieldnames):
-    with open(filename, 'w', newline='') as file:
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(data)
+def write_to_excel(results, summary, filename):
+    # Convert results and summary to DataFrames
+    results_df = pd.DataFrame(results)
+    summary_df = pd.DataFrame(summary)
+
+    # Write to Excel with two sheets
+    with pd.ExcelWriter(f'Reporte Mutaciones {filename}.xlsx', engine='openpyxl') as writer:
+        results_df.to_excel(writer, sheet_name='Data', index=False)
+        summary_df.to_excel(writer, sheet_name='Resumen', index=False)
 
 def main():
     if len(sys.argv) != 2:
@@ -105,10 +110,8 @@ def main():
     results = analyze_data(data)
     summary = generate_summary(results)
     
-    # Write both CSV files
-    write_to_csv(results, f'Reporte Mutaciones {start_date}.csv', ['offense_id', 'domain_name', 'column', 'initial_value', 'changed_value', 'query_time'])
-    write_to_csv(summary, f'Reporte Resumen {start_date}.csv', ['domain_name', 'offense_id', 'evolution', 'magnitude'])
-
+    # Write Excel with two sheets
+    write_to_excel(results, summary, start_date)
 
 if __name__ == '__main__':
     main()
