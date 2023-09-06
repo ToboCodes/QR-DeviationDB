@@ -22,13 +22,16 @@ def fetch_data(start_date):
     # JOIN with domain table
     cursor.execute("""
         SELECT o.offense_id, d.name AS domain_name, o.category_count, o.device_count, o.event_count, 
-               o.local_destination_count, o.magnitude, o.username_count, o.query_time, o.source_count,
-               o.remote_destination_count, o.security_category_count
+           o.local_destination_count, o.magnitude, o.username_count, o.query_time, o.source_count,
+           o.remote_destination_count, o.security_category_count
         FROM Offense o
         JOIN Domains d ON o.domain_id = d.domain_id
-        WHERE o.last_updated_time >= %s
-        ORDER BY o.offense_id, o.query_time;
-    """, (unix_timestamp,))
+        WHERE o.offense_id IN (
+            SELECT DISTINCT offense_id
+            FROM Offense
+            WHERE last_updated_time >= %s
+        )
+        ORDER BY o.offense_id, o.query_time;""", (unix_timestamp,))
 
     return cursor.fetchall()
 
@@ -140,10 +143,9 @@ def write_to_excel(results, summary, filename):
     with pd.ExcelWriter(f'Reporte Mutaciones {filename}.xlsx', engine='openpyxl') as writer:
         # Set filters and data sorting
         # summary_df = summary_df[summary_df['Evolución'] != 1]  # Filter out rows where 'Evolución' = 1
-        results_df.to_excel(writer, sheet_name='Data', index=False)
-        
         summary_df.sort_values(by='Magnitud', ascending=False, inplace=True)  # Sort by 'Magnitud'
         summary_df.to_excel(writer, sheet_name='Resumen', index=False)
+        results_df.to_excel(writer, sheet_name='Data', index=False)
         
         workbook  = writer.book
         results_sheet = workbook['Data']
