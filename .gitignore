@@ -6,3 +6,5 @@ ProcessedData/
 *.xlsx
 run_analysis.sh
 run_upload.sh
+run_all.sh
+example.js

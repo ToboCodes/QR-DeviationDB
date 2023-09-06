@@ -22,7 +22,8 @@ def fetch_data(start_date):
     # JOIN with domain table
     cursor.execute("""
         SELECT o.offense_id, d.name AS domain_name, o.category_count, o.device_count, o.event_count, 
-               o.local_destination_count, o.magnitude, o.username_count, o.query_time
+               o.local_destination_count, o.magnitude, o.username_count, o.query_time, o.source_count,
+               o.remote_destination_count, o.security_category_count
         FROM Offense o
         JOIN Domains d ON o.domain_id = d.domain_id
         WHERE o.last_updated_time >= %s
@@ -34,34 +35,24 @@ def fetch_data(start_date):
 def analyze_data(data):
     results = []
     for i in range(0, len(data) - 4, 5):
-        for j in range(0, 4):  # Data process 'for' loop
+        for j in range(0, 4):  # This loop goes from 0 to 3, inclusive
             current_data = data[i + j]
             next_data = data[i + j + 1]
-            
+
             if current_data["offense_id"] != next_data["offense_id"]:
                 break
 
-            for column in ["category_count", "device_count", "local_destination_count", "magnitude", "username_count"]:
-                if current_data[column] < next_data[column]:
+            for column in ["category_count", "device_count", "local_destination_count", "magnitude", "username_count", "source_count", "remote_destination_count", "security_category_count", "event_count"]:
+                delta_value = next_data[column] - current_data[column]
+                if delta_value > 0:
                     results.append({
                         'offense_id': current_data['offense_id'],
                         'domain_name': current_data['domain_name'],
                         'column': column,
-                        'initial_value': current_data[column],
+                        'delta_value': delta_value,
                         'changed_value': next_data[column],
                         'query_time': next_data['query_time']
                     })
-
-            event_count_delta = next_data['event_count'] - current_data['event_count']
-            if event_count_delta >= 50 and (current_data['event_count'] == 0 or event_count_delta / current_data['event_count'] >= 2):
-                results.append({
-                    'offense_id': current_data['offense_id'],
-                    'domain_name': current_data['domain_name'],
-                    'column': 'event_count',
-                    'initial_value': current_data['event_count'],
-                    'changed_value': next_data['event_count'],
-                    'query_time': next_data['query_time']
-                })
     return results
 
 def generate_summary(results):
@@ -74,21 +65,39 @@ def generate_summary(results):
         summary[key]['evolution'].add(row['query_time'])
 
         if row['column'] == 'category_count':
-            summary[key]['magnitude'] += 5
+            summary[key]['magnitude'] += row['delta_value']*2
         elif row['column'] == 'device_count':
-            summary[key]['magnitude'] += 10
+            if row['delta_value'] > 2:
+                summary[key]['magnitude'] += 5
         elif row['column'] == 'event_count':
-            summary[key]['magnitude'] += 2
+            increase = (row['delta_value'] >= 50) and row['query_time'] != 4
+            if increase:
+                summary[key]['magnitude'] += 3
         elif row['column'] == 'local_destination_count':
-            summary[key]['magnitude'] += 4
+            summary[key]['magnitude'] += 3
         elif row['column'] == 'magnitude':
-            summary[key]['magnitude'] += 8
+            if row['changed_value'] > 4 and row['changed_value'] < 7:
+                summary[key]['magnitude'] += 3
+            elif row['changed_value'] == 7:
+                summary[key]['magnitude'] += 6
+            elif row['changed_value'] > 7:
+                summary[key]['magnitude'] += 10
+            else:
+                summary[key]['magnitude'] += 2
         elif row['column'] == 'username_count':
+            summary[key]['magnitude'] += 1
+        elif row['column'] == 'source_count':
+            summary[key]['magnitude'] += 3
+        elif row['column'] == 'remote_destination_count':
             summary[key]['magnitude'] += 2
+        elif row['column'] == 'security_category_count':
+            summary[key]['magnitude'] += 1
+
 
     # List of dictionaries for easier document writing
     summary_list = [{'domain_name': key[0], 'offense_id': key[1], 'evolution': len(val['evolution']), 'magnitude': val['magnitude']} for key, val in summary.items()]
     return sorted(summary_list, key=lambda x: x['domain_name'])
+
 
 
 def auto_adjust_columns_width(sheet):
@@ -108,13 +117,15 @@ def write_to_excel(results, summary, filename):
     results_df = pd.DataFrame(results)
     summary_df = pd.DataFrame(summary)
     
+    # Omit the 'changed_value' column
+    results_df = results_df[['offense_id', 'domain_name', 'column', 'delta_value', 'query_time']]
+    
     # Set column names for the 'Data' sheet
     results_df.rename(columns={
         'offense_id': 'Ofensa',
         'domain_name': 'Cliente',
         'column': 'Atributo',
-        'initial_value': 'Valor Inicial',
-        'changed_value': 'Delta',
+        'delta_value': 'Delta',
         'query_time': 'Muestra'
     }, inplace=True)
 
@@ -127,16 +138,19 @@ def write_to_excel(results, summary, filename):
     }, inplace=True)
 
     with pd.ExcelWriter(f'Reporte Mutaciones {filename}.xlsx', engine='openpyxl') as writer:
+        # Set filters and data sorting
+        # summary_df = summary_df[summary_df['Evolución'] != 1]  # Filter out rows where 'Evolución' = 1
         results_df.to_excel(writer, sheet_name='Data', index=False)
         
-        # Set filters and data sorting
-        summary_df = summary_df[summary_df['Evolución'] != 1]  # Filter out rows where 'Evolución' = 1
         summary_df.sort_values(by='Magnitud', ascending=False, inplace=True)  # Sort by 'Magnitud'
-        
         summary_df.to_excel(writer, sheet_name='Resumen', index=False)
+        
         workbook  = writer.book
         results_sheet = workbook['Data']
         summary_sheet = workbook['Resumen']
+        
+        # Hide the 'Cliente' column in the 'Data' sheet
+        results_sheet.column_dimensions['B'].hidden = True
 
         # Set cell borders
         border = Border(left=Side(style='thin'), 
