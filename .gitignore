@@ -1,5 +1,8 @@
 10.4.0.67/
+NewData/
+ProcessedData/
 *.csv
 *.xls
 *.xlsx
 run_analysis.sh
+run_upload.sh

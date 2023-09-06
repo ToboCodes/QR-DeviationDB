@@ -1,21 +1,40 @@
 import mysql.connector
 import json
 import os
+import shutil
 
-def load_json_files(directory):
+# Load data and store filenames
+def load_json_files(directory, processed_directory):
     data_list = []
+    filenames = []
     for filename in os.listdir(directory):
+        filepath = os.path.join(directory, filename)
         if filename.endswith(".json"):
-            with open(os.path.join(directory, filename), 'r') as file:
+            with open(filepath, 'r') as file:
+                file_content = file.read()
+
+                # Check if the file contains "503 Service Unavailable"
+                if "503 Service Unavailable" in file_content:
+                    print(f"File contains '503 Service Unavailable' error: {filename}. Moving to ProcessedData directory.")
+                    shutil.move(filepath, os.path.join(processed_directory, filename))
+                    continue
+
+                if os.path.getsize(filepath) == 0:  # Check if the file is empty
+                    print(f"Empty file: {filename}. Moving to ProcessedData directory.")
+                    shutil.move(filepath, os.path.join(processed_directory, filename))
+                    continue
+
                 try:
-                    data = json.load(file)
+                    data = json.loads(file_content)
                     offense_id, query_time = filename.replace(".json", "").split("-")
                     data['offense_id'] = int(offense_id)
                     data['query_time'] = int(query_time)
                     data_list.append(data)
+                    filenames.append(filename)
                 except json.JSONDecodeError:
                     print(f"Error decoding JSON in file: {filename}")
-    return data_list
+    return data_list, filenames
+
 
 def insert_data_to_db(data_list, db_config):
     connection = mysql.connector.connect(**db_config)
@@ -29,7 +48,7 @@ def insert_data_to_db(data_list, db_config):
         if cursor.fetchone():
             continue
 
-        # Fetch or default values for all potential fields
+        # Set default values for empty data
         assigned_to = data.get('assigned_to', None)
         category_count = data.get('category_count', None)
         close_time = data.get('close_time', None)
@@ -97,7 +116,7 @@ def insert_data_to_db(data_list, db_config):
                 """, (category,))
                 category_id = cursor.lastrowid
             
-            # Insert into OffenseCategories
+            # INSERT INTO OffenseCategories
             cursor.execute("""
                 INSERT INTO OffenseCategories (offense_id, query_time, category_id) 
                 VALUES (%s, %s, %s);
@@ -153,17 +172,22 @@ def insert_data_to_db(data_list, db_config):
     connection.close()
 
 def main():
-    directory = "/home/cicontreras/Scripts/10.4.0.67"
-    data_list = load_json_files(directory)
+    directory = "/home/cicontreras/Scripts/QR-DeviationDB/NewData"
+    processed_directory = "/home/cicontreras/Scripts/QR-DeviationDB/ProcessedData"
+    data_list, filenames = load_json_files(directory, processed_directory)
 
     db_config = {
         'user': 'root',
-        'password': input("Enter MySQL password: "),
+        'password': os.environ.get('DB_PASSWORD'),
         'host': '127.0.0.1',
         'database': 'desviaciones'
     }
 
     insert_data_to_db(data_list, db_config)
+    
+    # Move processed files to ProcessedData directory
+    for filename in filenames:
+        shutil.move(os.path.join(directory, filename), os.path.join(processed_directory, filename))
 
 if __name__ == "__main__":
     main()

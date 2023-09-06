@@ -13,13 +13,13 @@ def fetch_data(start_date):
         'database': 'desviaciones'
     }
 
-    # Convert the start date to UNIX timestamp in milliseconds
+    # Convert date to UNIX time in ms
     unix_timestamp = int(datetime.datetime.strptime(start_date, '%Y-%m-%d').timestamp() * 1000)
 
     connection = mysql.connector.connect(**db_config)
     cursor = connection.cursor(dictionary=True)
     
-    # Joining with the Domains table to get domain names
+    # JOIN with domain table
     cursor.execute("""
         SELECT o.offense_id, d.name AS domain_name, o.category_count, o.device_count, o.event_count, 
                o.local_destination_count, o.magnitude, o.username_count, o.query_time
@@ -34,7 +34,7 @@ def fetch_data(start_date):
 def analyze_data(data):
     results = []
     for i in range(0, len(data) - 4, 5):
-        for j in range(0, 4):  # This loop goes from 0 to 3, inclusive
+        for j in range(0, 4):  # Data process 'for' loop
             current_data = data[i + j]
             next_data = data[i + j + 1]
             
@@ -86,7 +86,7 @@ def generate_summary(results):
         elif row['column'] == 'username_count':
             summary[key]['magnitude'] += 2
 
-    # Convert the summary dictionary to a list of dictionaries for easier writing
+    # List of dictionaries for easier document writing
     summary_list = [{'domain_name': key[0], 'offense_id': key[1], 'evolution': len(val['evolution']), 'magnitude': val['magnitude']} for key, val in summary.items()]
     return sorted(summary_list, key=lambda x: x['domain_name'])
 
@@ -105,11 +105,10 @@ def auto_adjust_columns_width(sheet):
         sheet.column_dimensions[column[0].column_letter].width = adjusted_width
 
 def write_to_excel(results, summary, filename):
-    # Convert results and summary to DataFrames
     results_df = pd.DataFrame(results)
     summary_df = pd.DataFrame(summary)
     
-    # Rename columns for the Data sheet
+    # Set column names for the 'Data' sheet
     results_df.rename(columns={
         'offense_id': 'Ofensa',
         'domain_name': 'Cliente',
@@ -119,7 +118,7 @@ def write_to_excel(results, summary, filename):
         'query_time': 'Muestra'
     }, inplace=True)
 
-    # Rename columns for the Resumen sheet
+    # Set column names for the 'Resumen' sheet
     summary_df.rename(columns={
         'domain_name': 'Cliente',
         'offense_id': 'Ofensa',
@@ -130,18 +129,16 @@ def write_to_excel(results, summary, filename):
     with pd.ExcelWriter(f'Reporte Mutaciones {filename}.xlsx', engine='openpyxl') as writer:
         results_df.to_excel(writer, sheet_name='Data', index=False)
         
-        # Filter and sort the summary dataframe before writing it to Excel
-        summary_df = summary_df[summary_df['Evolución'] != 1]  # Filter out rows where 'Evolución' is 1
+        # Set filters and data sorting
+        summary_df = summary_df[summary_df['Evolución'] != 1]  # Filter out rows where 'Evolución' = 1
         summary_df.sort_values(by='Magnitud', ascending=False, inplace=True)  # Sort by 'Magnitud'
         
         summary_df.to_excel(writer, sheet_name='Resumen', index=False)
-
-        # Get the `openpyxl` workbook and sheets objects
         workbook  = writer.book
         results_sheet = workbook['Data']
         summary_sheet = workbook['Resumen']
 
-        # Define border style
+        # Set cell borders
         border = Border(left=Side(style='thin'), 
                         right=Side(style='thin'), 
                         top=Side(style='thin'), 
@@ -149,7 +146,6 @@ def write_to_excel(results, summary, filename):
 
         # Apply styles and filters
         for sheet in [results_sheet, summary_sheet]:
-            # Enable filters for all columns
             last_col_letter = sheet.cell(row=1, column=sheet.max_column).column_letter
             sheet.auto_filter.ref = f"A1:{last_col_letter}1"
             
