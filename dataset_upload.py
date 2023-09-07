@@ -21,6 +21,10 @@ def load_json_files(directory, processed_directory):
 
                 try:
                     data = json.loads(file_content)
+                    if "http_response" in data:
+                        print(f"{filename} contains an HTTP error: {data['http_response']['message']}. Moving to ProcessedData.")
+                        shutil.move(filepath, os.path.join(processed_directory, filename))
+                        continue
                     # Use the 'id' key from the JSON data as the offense_id
                     data['offense_id'] = data['id']
                     _, query_time = filename.replace(".json", "").split("-")
@@ -38,6 +42,10 @@ def load_json_files(directory, processed_directory):
                     filenames.append(filename)
                 except json.JSONDecodeError:
                     print(f"Error decoding JSON in: {filename}. Please check the file.")
+                    continue
+                except KeyError:
+                    print(f"Error: The file '{filename}' does not have a valid 'id' key.")
+                    continue
     return data_list, filenames
 
 
@@ -180,6 +188,7 @@ def main():
     
     # Move processed files to ProcessedData directory
     for filename in filenames:
+        print(f"{filename} uploaded to DB. Moving to ProcessedData.")
         shutil.move(os.path.join(directory, filename), os.path.join(processed_directory, filename))
 
 if __name__ == "__main__":

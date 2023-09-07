@@ -19,7 +19,7 @@ def copy_files(src_directory, dest_directory, processed_directory):
             not os.path.exists(processed_filepath)):
             
             shutil.copy(src_filepath, dest_filepath)
-            print(f"Copied {filename} to {dest_directory}")
+            print(f"Copied {filename} to NewData")
 
 def main():
     # Directories
