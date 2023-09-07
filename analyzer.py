@@ -142,7 +142,7 @@ def write_to_excel(results, summary, filename):
 
     with pd.ExcelWriter(f'Reporte Mutaciones {filename}.xlsx', engine='openpyxl') as writer:
         # Set filters and data sorting
-        # summary_df = summary_df[summary_df['Evolución'] != 1]  # Filter out rows where 'Evolución' = 1
+        summary_df = summary_df[summary_df['Evolución'] != 1]  # Filter out rows where 'Evolución' = 1
         summary_df.sort_values(by='Magnitud', ascending=False, inplace=True)  # Sort by 'Magnitud'
         summary_df.to_excel(writer, sheet_name='Resumen', index=False)
         results_df.to_excel(writer, sheet_name='Data', index=False)
