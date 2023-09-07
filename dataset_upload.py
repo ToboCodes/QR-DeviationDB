@@ -13,26 +13,31 @@ def load_json_files(directory, processed_directory):
             with open(filepath, 'r') as file:
                 file_content = file.read()
 
-                # Check if the file contains "503 Service Unavailable"
-                if "503 Service Unavailable" in file_content:
-                    print(f"File contains '503 Service Unavailable' error: {filename}. Moving to ProcessedData directory.")
-                    shutil.move(filepath, os.path.join(processed_directory, filename))
-                    continue
-
-                if os.path.getsize(filepath) == 0:  # Check if the file is empty
-                    print(f"Empty file: {filename}. Moving to ProcessedData directory.")
+                # Handle server error or empty files
+                if "503 Service Unavailable" in file_content or os.path.getsize(filepath) == 0:
+                    print(f"{filename} has no valid JSON data. Moving to ProcessedData.")
                     shutil.move(filepath, os.path.join(processed_directory, filename))
                     continue
 
                 try:
                     data = json.loads(file_content)
-                    offense_id, query_time = filename.replace(".json", "").split("-")
-                    data['offense_id'] = int(offense_id)
+                    # Use the 'id' key from the JSON data as the offense_id
+                    data['offense_id'] = data['id']
+                    _, query_time = filename.replace(".json", "").split("-")
                     data['query_time'] = int(query_time)
+                    
+                    # Exclude specified keys
+                    for key in ["assigned_to", "close_time", "closing_reason_id", "closing_user", "flow_count", "follow_up", "id", "inactive", "protected", "security_category_count", "status"]:
+                        data.pop(key, None)
+                    
+                    # Remove line breaks from "description"
+                    if 'description' in data:
+                        data['description'] = data['description'].replace('\n', '')
+
                     data_list.append(data)
                     filenames.append(filename)
                 except json.JSONDecodeError:
-                    print(f"Error decoding JSON in file: {filename}")
+                    print(f"Error decoding JSON in: {filename}. Please check the file.")
     return data_list, filenames
 
 
@@ -49,21 +54,13 @@ def insert_data_to_db(data_list, db_config):
             continue
 
         # Set default values for empty data
-        assigned_to = data.get('assigned_to', None)
         category_count = data.get('category_count', None)
-        close_time = data.get('close_time', None)
-        closing_reason_id = data.get('closing_reason_id', None)
-        closing_user = data.get('closing_user', None)
         credibility = data.get('credibility', None)
         description = data.get('description', None)
         device_count = data.get('device_count', None)
         domain_id = data.get('domain_id', None)
         event_count = data.get('event_count', None)
         first_persisted_time = data.get('first_persisted_time', None)
-        flow_count = data.get('flow_count', None)
-        follow_up = data.get('follow_up', None)
-        id_val = data.get('id', None)
-        inactive = data.get('inactive', None)
         last_persisted_time = data.get('last_persisted_time', None)
         last_updated_time = data.get('last_updated_time', None)
         local_destination_count = data.get('local_destination_count', None)
@@ -71,34 +68,30 @@ def insert_data_to_db(data_list, db_config):
         offense_source = data.get('offense_source', None)
         offense_type = data.get('offense_type', None)
         policy_category_count = data.get('policy_category_count', None)
-        protected = data.get('protected', None)
         relevance = data.get('relevance', None)
         remote_destination_count = data.get('remote_destination_count', None)
-        security_category_count = data.get('security_category_count', None)
         severity = data.get('severity', None)
         source_count = data.get('source_count', None)
         source_network = data.get('source_network', None)
         start_time = data.get('start_time', None)
-        status = data.get('status', None)
         username_count = data.get('username_count', None)
 
         # INSERT INTO Offense table
         cursor.execute("""
-            INSERT INTO Offense (offense_id, query_time, assigned_to, category_count, close_time, 
-                                 closing_reason_id, closing_user, credibility, description, device_count, 
-                                 domain_id, event_count, first_persisted_time, flow_count, follow_up, id, 
-                                 inactive, last_persisted_time, last_updated_time, local_destination_count, 
-                                 magnitude, offense_source, offense_type, policy_category_count, protected, 
-                                 relevance, remote_destination_count, security_category_count, severity, 
-                                 source_count, source_network, start_time, status, username_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
-        """, (data['offense_id'], data['query_time'], assigned_to, category_count, 
-              close_time, closing_reason_id, closing_user, credibility, description, device_count, 
-              domain_id, event_count, first_persisted_time, flow_count, follow_up, id_val, inactive, 
+            INSERT INTO Offense (offense_id, query_time, category_count, 
+                                 credibility, description, device_count, 
+                                 domain_id, event_count, first_persisted_time, 
+                                 last_persisted_time, last_updated_time, local_destination_count, 
+                                 magnitude, offense_source, offense_type, policy_category_count, 
+                                 relevance, remote_destination_count, severity, 
+                                 source_count, source_network, start_time, username_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+        """, (data['offense_id'], data['query_time'], category_count, 
+              credibility, description, device_count, 
+              domain_id, event_count, first_persisted_time, 
               last_persisted_time, last_updated_time, local_destination_count, magnitude, offense_source, 
-              offense_type, policy_category_count, protected, relevance, remote_destination_count, 
-              security_category_count, severity, source_count, source_network, start_time, status, username_count))
+              offense_type, policy_category_count, relevance, remote_destination_count, 
+              severity, source_count, source_network, start_time, username_count))
 
         # INSERT INTO Categories table and OffenseCategories junction table
         categories = data.get('categories', [])
